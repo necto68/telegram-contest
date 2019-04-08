@@ -89,6 +89,9 @@ body.theme-night {
 
 .a-chart__y-label {
   position: absolute;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
   opacity: 0;
 }
 
@@ -217,6 +220,7 @@ body.theme-night .a-chart__selection-bubble {
   padding: 8px 10px 6px 10px;
   border-radius: 6px;
   margin-right: 8px;
+  cursor: pointer;
 }
 
 body.theme-day .a-chart__selection-box {
@@ -270,13 +274,15 @@ body.theme-night .a-chart__selection-box {
   max-height: 10vh;
   margin: 0 18px;
   overflow: hidden;
+  border-radius: 10px;
 }
 
 .a-chart__overview-window {
   position: absolute;
   height: 100%;
   border-style: solid;
-  border-width: 1.5px 6px;
+  border-width: 3px 12px;
+  border-radius: 10px;
 }
 
 .a-chart.is-animated .a-chart__overview-window {
@@ -342,13 +348,11 @@ body.theme-night .a-chart__legend {
   font-size: 14px;
   margin: 7px;
   padding: 10px 12px;
-  /*border: 1px solid #e6ecf0;*/
-  border: 1px solid rgba(176, 193, 204, 0.3);
   border-radius: 20px;
-}
-
-body.theme-night .a-chart__legend-label {
-  border-color: #344658;
+  transition-property: box-shadow, color;
+  transition-duration: 0.3s;
+  color: var(--shadow-color);
+  box-shadow: inset 0px 0px 0px 2px var(--shadow-color);
 }
 
 .a-chart__legend-checkmark {
@@ -358,15 +362,11 @@ body.theme-night .a-chart__legend-label {
   width: 24px;
   height: 24px;
   border-radius: 24px;
-  box-shadow: inset 0px 0px 0px 2px currentColor;
 }
 
-.a-chart.is-animated .a-chart__legend-checkmark {
-  transition: box-shadow 0.3s;
-}
-
-.a-chart__legend-label.is-active .a-chart__legend-checkmark {
-  box-shadow: inset 0px 0px 0px 15px currentColor;
+.a-chart__legend-label.is-active {
+  box-shadow: inset 0px 0px 0px 22px var(--shadow-color);
+  color: white;
 }
 
 .a-chart__legend-checkmark:before {

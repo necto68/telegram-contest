@@ -1,10 +1,12 @@
-// Copyright 2019 Denis Olshin
-
 // Detecting browsers
 var isOpera = (!!window.opr && !!opr.addons) || !!window.opera || navigator.userAgent.indexOf(' OPR/') >= 0;
 var isSafari = /constructor/i.test(window.HTMLElement) || (function (p) { return p.toString() === "[object SafariRemoteNotification]"; })(!window.safari || (typeof safari !== 'undefined' && safari.pushNotification)) || navigator.userAgent.indexOf('Safari') != -1;
 var isChrome = !!window.chrome && (!!window.chrome.webstore || !!window.chrome.runtime);
 
+
+function getNormalizedValue(from, to, valueMin, valueMax, value) {
+  return (to - from) * ((value - valueMin) / (valueMax - valueMin)) + from;
+}
 // Utility functions
 function createEl(parent, name, tag) {
   var el;
@@ -38,6 +40,25 @@ function createPath(svg, xs, series, width) {
 
   svg.appendChild(line);
   return line;
+}
+
+function createPath1(svg, xs, series, width) {
+  var g, i, d = [];
+  g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  // g.setAttribute('stroke', 'white');
+  g.setAttribute('fill', series.color);
+
+  for (i = 0; i < series.pts.length; i++) {
+    var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', (xs[i] - xs[0]) / 1e7);
+    rect.setAttribute('y', series.pts[i] - 100);
+    rect.setAttribute('width', xs[xs.length - 1] / 1e7 / 17650);
+    rect.setAttribute('height', 100);
+    g.appendChild(rect);
+  }
+
+  svg.appendChild(g);
+  return g;
 }
 
 function getElementData(el, name) {
@@ -165,15 +186,18 @@ function createDraggableBehavior(chart, el, handler, endHandler, attachToWrapper
 
 var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function formatDate(date, showWeekday, showDay) {
+function formatDate(date, showWeekday, showDay, showYear) {
   var result = [];
   date = new Date(date);
   if (showWeekday) {
     result.push(WEEKDAYS[date.getDay()], ', ');
   }
-  result.push(MONTHS[date.getMonth()]);
   if (showDay) {
     result.push(' ', date.getDate());
+  }
+  result.push(' ', MONTHS[date.getMonth()]);
+  if (showYear) {
+    result.push(' ', date.getFullYear());
   }
   return result.join('');
 }
@@ -198,29 +222,51 @@ function AChart(wrapperId, data) {
   this.MIN_DAY_SIZE = 70; // px
   this.SIDE_PADDING = 18; // px
 
+
   // Convert input data to more usable format
-  this.series = [];
-  for (k in data.types) {
-    for (j = 0; j < data.columns.length; j++) {
-      if (data.columns[j][0] == k) {
-        pts = data.columns[j].slice(1);
+  this.recalculatePoints = function(data) {
+    this.series = [];
+
+    for (k in data.types) {
+      for (j = 0; j < data.columns.length; j++) {
+        if (data.columns[j][0] == k) {
+          pts = data.columns[j].slice(1);
+        }
+      }
+
+      if (data.types[k] == 'x') {
+        this.xs = pts;
+      } else
+      if (data.types[k] == 'line') {
+        this.series.push({
+          isActive: true,
+          ptsLabels: pts,
+          pts: data.y_scaled && k === 'y1' ? 
+            pts.map(p => getNormalizedValue(
+              Math.min(...this.series[this.series.length - 1].pts),
+              Math.max(...this.series[this.series.length - 1].pts),
+              Math.min(...pts),
+              Math.max(...pts),
+              p
+            )) : pts,
+          name: data.names[k],
+          color: data.colors[k],
+          doubleY: Boolean(data.y_scaled),
+          minY: Math.min(...pts),
+          maxY: Math.max(...pts),
+        });
+      } else {
+        throw new Error('Unsupported series type: "' + data.types[k] + '"');
       }
     }
 
-    if (data.types[k] == 'x') {
-      this.xs = pts;
-    } else
-    if (data.types[k] == 'line') {
-      this.series.push({
-        isActive: true,
-        pts: pts,
-        name: data.names[k],
-        color: data.colors[k],
-      });
-    } else {
-      throw new Error('Unsupported series type: "' + data.types[k] + '"');
-    }
-  }
+    this.gminX = this.xs[0];
+    this.gmaxX = this.xs[this.xs.length - 1];
+    this.minX = this.gmaxX - 4e9;
+    this.maxX = this.gmaxX;
+    this.selectionIndex = null;
+
+  }.bind(this);
 
   // Event handlers
   this.onLegendLabelToggle = function(index) {
@@ -251,11 +297,8 @@ function AChart(wrapperId, data) {
     }
   }.bind(this);
 
-  this.gminX = this.xs[0];
-  this.gmaxX = this.xs[this.xs.length - 1];
-  this.minX = this.gmaxX - 4e9;
-  this.maxX = this.gmaxX;
-  this.selectionIndex = null;
+  // calculate initial points
+  this.recalculatePoints(data);
 
   // Build static DOM structure
   this.wrapperEl = document.getElementById(wrapperId);
@@ -433,8 +476,9 @@ function AChart(wrapperId, data) {
   for (i = 0; i < this.series.length; i++) {
     label = createEl(this.legendEl, 'legend-label is-series-' + i + ' is-active');
     label.innerText = this.series[i].name;
+    label.style.setProperty('--shadow-color', this.series[i].color);
     icon = createEl(label, 'legend-checkmark');
-    icon.style.color = this.series[i].color;
+    // icon.style.color = this.series[i].color;
     label.addEventListener('click', this.onLegendLabelToggle.bind(this, i), true);
     this.legendLabelEls.push(label);
   }
@@ -457,25 +501,34 @@ AChart.prototype.updateView = function() {
       H = this.viewEl.offsetHeight,
       oH = this.overviewEl.offsetHeight,
       maxY = 0, gmaxY = 0,
+      maxYRight = 0,
       firstX = null, noData = true, i, j, x, y,
       scaleX = W / (this.maxX - this.minX),
       gscaleX = W / (this.gmaxX - this.gminX),
-      order, scaleX, gscaleX, scaleY, gscaleY, series,
-      oldScaleY = this.scaleY, add, line, updateLine, updateLabel,
-      stepX, stepY, day, label, left, percent, highest, windowL, windowR, html;
+      order, orderRight,
+      scaleX, gscaleX, scaleY, gscaleY, series,
+      oldScaleY = this.scaleY, 
+      add, addRight,
+      line, updateLine, updateLabel,
+      stepX,
+      stepY, stepYRight, 
+      day, label, left, percent, highest, windowL, windowR, html;
 
   for (i = 0; i < this.series.length; i++) {
     series = this.series[i];
-    if (series.isActive) {
+    if (series.isActive || series.doubleY) {
       for (j = 0; j < this.xs.length; j++) {
         noData = false;
         if (this.minX <= this.xs[j] && this.xs[j] <= this.maxX) {
-          maxY = Math.max(maxY, series.pts[j]);
+          maxY = Math.max(maxY, series.ptsLabels[j]);
+          // if (series.doubleY && i === 1) {
+          //   maxYRight = Math.max(maxYRight, series.ptsLabels[j]);
+          // }
           if (firstX === null) {
             firstX = this.xs[j];
           }
         }
-        gmaxY = Math.max(gmaxY, series.pts[j]);
+        gmaxY = Math.max(gmaxY, series.ptsLabels[j]);
       }
     }
   }
@@ -489,11 +542,28 @@ AChart.prototype.updateView = function() {
   gscaleY = (oH - 4) / gmaxY;
   oldScaleY = this.scaleY;
 
+  // orderRight = Math.pow(10, Math.floor(Math.log(maxYRight) * Math.LOG10E)) / 2;
+  // maxYRight = Math.ceil(maxYRight / orderRight) * orderRight;
+  // stepYRight = maxYRight / 5;
+
   // Update horizontal grid lines & labels
   add = {};
   if (!noData) {
     for (i = 0; i <= 5; i++) {
       add[stepY * i] = true;
+    }
+  }
+
+  addRight = {0: true};
+  if (!noData) {
+    for (i = 1; i <= 5; i++) {
+      addRight[getNormalizedValue(
+        this.series[1].minY,
+        this.series[1].maxY,
+        this.series[0].minY,
+        this.series[0].maxY,
+        Object.keys(add)[i])
+      ] = true;
     }
   }
 
@@ -503,6 +573,7 @@ AChart.prototype.updateView = function() {
       line.lineEl.style.opacity = 1;
       line.labelEl.style.opacity = 1;
       delete add[line.y];
+      delete addRight[line.yRight];
       line.lineEl.removeEventListener('transitionend', this.onYLineTransitionEnd, true);
     } else {
       line.lineEl.style.opacity = 0;
@@ -513,13 +584,19 @@ AChart.prototype.updateView = function() {
     line.labelEl.style.bottom = line.y * scaleY + 'px';
   }
 
-  for (y in add) {
+  Object.keys(add).forEach((y, index) => {
+    const yRight = Object.keys(addRight)[index];
+
     line = {
       y: y,
+      yRight: yRight,
       lineEl: createEl(this.gridContainerEl, 'y-line'),
       labelEl: createEl(this.gridContainerEl, 'y-label'),
     };
-    line.labelEl.innerText = formatNumber(y, true);
+    line.labelEl.innerHTML = this.series[0].doubleY 
+      ? `<div style="color:${this.series[0].color}">${this.series[0].isActive ? formatNumber(y, true) : ''}</div>` + `<div style="color:${this.series[1].color}">${this.series[1].isActive ? formatNumber(yRight, true) : ''}</div>`
+      : formatNumber(y, true);
+
     if (this.scaleY !== undefined) {
       line.lineEl.style.bottom = line.y * oldScaleY + 'px';
       line.labelEl.style.bottom = line.y * oldScaleY + 'px';
@@ -538,7 +615,7 @@ AChart.prototype.updateView = function() {
       updateLine();
     }
     this.yLines.push(line);
-  }
+  })
 
   // Update horizontal axis labels
   stepX = 1000 * 60 * 60 * 24;
@@ -625,12 +702,12 @@ AChart.prototype.updateView = function() {
       }
     }
 
-    html = [formatDate(this.xs[this.selectionIndex], true, true)];
+    html = [formatDate(this.xs[this.selectionIndex], true, true, true)];
     html.push('<div class="a-chart__selection-box-labels">');
     for (i = 0; i < this.series.length; i++) {
       if (this.series[i].isActive) {
         html.push('<div style="color: ', this.series[i].color, '">',
-          '<b>', formatNumber(this.series[i].pts[this.selectionIndex]), '</b>', this.series[i].name,
+          '<b>', formatNumber(this.series[i].ptsLabels[this.selectionIndex]), '</b>', this.series[i].name,
         '</div>');
       }
     }
