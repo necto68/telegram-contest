@@ -16,7 +16,7 @@ main {
   padding: 0px 18px 60px 18px;
   width: 100%;
   min-height: 100vh;
-  max-width: 800px;
+  max-width: 700px;
   position: relative;
   overflow: hidden;
 }
@@ -90,9 +90,11 @@ body.theme-night {
 .a-chart__y-label {
   position: absolute;
   display: flex;
+  z-index: 1;
   width: 100%;
   justify-content: space-between;
   opacity: 0;
+  pointer-events: none;
 }
 
 .a-chart.is-animated .a-chart__y-label {
@@ -221,6 +223,7 @@ body.theme-night .a-chart__selection-bubble {
   border-radius: 6px;
   margin-right: 8px;
   cursor: pointer;
+  z-index: 2;
 }
 
 body.theme-day .a-chart__selection-box {
@@ -291,12 +294,12 @@ body.theme-night .a-chart__selection-box {
 
 body.theme-day .a-chart__overview-window {
   border-color: rgba(84, 149, 194, 0.2);
-  outline: solid rgba(244, 247, 252, 0.8) 100vw;
+  box-shadow: 0px 0px 0px 100vw rgba(244, 247, 252, 0.8);
 }
 
 body.theme-night .a-chart__overview-window {
   border-color: rgba(128, 176, 210, 0.3);
-  outline: solid rgba(29, 39, 54, 0.7) 100vw;
+  box-shadow: 0px 0px 0px 100vw rgba(29, 39, 54, 0.7);
 }
 
 .a-chart__overview-handle {
@@ -323,13 +326,31 @@ body.theme-night .a-chart__overview-window {
   transform: scaleY(-1);
 }
 
-.a-chart__view-svg path, .a-chart__overview-svg path {
+.a-chart__view-svg .animatable,
+.a-chart__overview-svg .animatable {
   transform-origin: top left;
 }
 
-.a-chart.is-animated .a-chart__view-svg path,
-.a-chart.is-animated .a-chart__overview-svg path {
-  transition: transform .3s, opacity .3s;
+.a-chart.is-animated .a-chart__view-svg .animatable,
+.a-chart.is-animated .a-chart__overview-svg .animatable {
+  /* will-change: transform; */
+  transition:  transform .3s, opacity .3s;
+  /* transform .3s, */
+}
+
+g.animatable > g,
+g.animatable > rect {
+  /* will-change: opacity; */
+}
+
+g.animatable:hover > g,
+g.animatable:hover > rect {
+  opacity: 0.5;
+}
+
+g.animatable:hover > g:hover,
+g.animatable:hover > rect:hover {
+  opacity: 1;
 }
 
 .a-chart__legend {

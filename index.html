@@ -26,23 +26,19 @@
     <h3>Apps</h3>
     <div id="chart-4"></div>
 
-    <a id="toggle-night" onclick="toggleNightMode()">Switch to Day Mode</a>
+    <a id="toggle-night" onclick="toggleTheme()">Switch to Day Mode</a>
   </main>
 
   <script src="chart.js"></script>
   <script src="chart_data.js"></script>
   <script>
-    for (var i = 0; i < 5; i++) {
-      new AChart('chart-' + i, chart[i]);
-    }
-
-    function toggleNightMode() {
+    function toggleTheme() {
       document.body.classList.toggle('theme-day');
       document.body.classList.toggle('theme-night');
       if (document.body.classList.contains('theme-day')) {
-        document.getElementById('toggle-night').innerText = 'Switch to Night Mode';
+        document.getElementById('toggle-night').innerText = 'Switch to Night Theme';
       } else {
-        document.getElementById('toggle-night').innerText = 'Switch to Day Mode';
+        document.getElementById('toggle-night').innerText = 'Switch to Day Theme';
       }
     }
   </script>

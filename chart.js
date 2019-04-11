@@ -1,3 +1,5 @@
+import {chartData} from './chart_data';
+
 // Detecting browsers
 var isOpera = (!!window.opr && !!opr.addons) || !!window.opera || navigator.userAgent.indexOf(' OPR/') >= 0;
 var isSafari = /constructor/i.test(window.HTMLElement) || (function (p) { return p.toString() === "[object SafariRemoteNotification]"; })(!window.safari || (typeof safari !== 'undefined' && safari.pushNotification)) || navigator.userAgent.indexOf('Safari') != -1;
@@ -7,6 +9,11 @@ var isChrome = !!window.chrome && (!!window.chrome.webstore || !!window.chrome.r
 function getNormalizedValue(from, to, valueMin, valueMax, value) {
   return (to - from) * ((value - valueMin) / (valueMax - valueMin)) + from;
 }
+
+const hex2rgba = (hex, alpha = 1) => {
+  const [r, g, b] = hex.match(/\w\w/g).map(x => parseInt(x, 16));
+  return `rgba(${r},${g},${b},${alpha})`;
+};
 // Utility functions
 function createEl(parent, name, tag) {
   var el;
@@ -23,7 +30,51 @@ function createEl(parent, name, tag) {
   }
 }
 
-function createPath(svg, xs, series, width) {
+function createPath(svg, xs, seriesArr, index, width) {
+  const series = seriesArr[index];
+
+  if (series.isBar) {
+    var g, i, d = [];
+    g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('fill', series.color);
+    g.classList.add('animatable')
+
+    for (i = 0; i < series.pts.length; i++) {
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      var height = series.pts[i] - (seriesArr[index - 1] ? seriesArr[index - 1].pts[i] : 0);
+      if (height > 30000000) {
+        const internalG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        // rect.setAttribute('stroke', series.color);
+        rect.setAttribute('x', (xs[i] - xs[0]) / 1e7);
+        rect.setAttribute('y', series.pts[i] - 30000000);
+        rect.setAttribute('width', xs[xs.length - 1] / 1e7 / 17650);
+        rect.setAttribute('height', 30000000);
+        internalG.appendChild(rect);
+
+        height -= 30000000;
+
+        rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', (xs[i] - xs[0]) / 1e7);
+        rect.setAttribute('y', series.pts[i] - height - 30000000);
+        rect.setAttribute('width', xs[xs.length - 1] / 1e7 / 17650);
+        rect.setAttribute('height', height);
+        internalG.appendChild(rect);
+
+        g.appendChild(internalG);
+      } else {
+        // rect.setAttribute('stroke', series.color);
+        rect.setAttribute('x', (xs[i] - xs[0]) / 1e7);
+        rect.setAttribute('y', series.pts[i] - height);
+        rect.setAttribute('width', xs[xs.length - 1] / 1e7 / 17992);
+        rect.setAttribute('height', height);
+        g.appendChild(rect);
+      }
+    }
+
+    svg.appendChild(g);
+    return g;
+  } 
+
   var line, i, d = [];
   line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   line.setAttribute('stroke', series.color);
@@ -31,6 +82,7 @@ function createPath(svg, xs, series, width) {
   line.setAttribute('stroke-width', width + 'px');
   line.setAttribute('vector-effect', 'non-scaling-stroke');
   line.setAttribute('stroke-linejoin', 'round');
+  line.classList.add('animatable')
 
   for (i = 0; i < series.pts.length; i++) {
     d.push(i == 0 ? 'M' : 'L');
@@ -255,7 +307,24 @@ function AChart(wrapperId, data) {
           minY: Math.min(...pts),
           maxY: Math.max(...pts),
         });
+      } else if (data.types[k] == 'bar') {
+        // console.log(data);
+        this.series.push({
+          isActive: true,
+          isBar: true,
+          isStacked: Boolean(data.stacked),
+          ptsLabels: pts,
+          pts: pts.map((currPts, index) => currPts * (data.stacked ? 1 : 0.1) + (this.series[this.series.length - 1] 
+            ? this.series[this.series.length - 1].pts[index] 
+            : 0)
+          ),
+          name: data.names[k],
+          color: data.colors[k],
+          minY: Math.min(...pts),
+          maxY: Math.max(...pts),
+        });
       } else {
+        
         throw new Error('Unsupported series type: "' + data.types[k] + '"');
       }
     }
@@ -327,9 +396,12 @@ function AChart(wrapperId, data) {
       if (this.xs[i] < this.minX || this.xs[i] > this.maxX) {
         continue;
       }
-      if (Math.abs(this.xs[i] - x) < Math.abs(this.xs[this.selectionIndex] - x)) {
+      if (this.series[0].isBar && x <= this.xs[i]) {
+        this.selectionIndex = i - 1;
+        break;
+      } else if (Math.abs(this.xs[i] - x) < Math.abs(this.xs[this.selectionIndex] - x)) {
         this.selectionIndex = i;
-      }
+      } 
     }
 
     for (i = 0; i < this.selectionBubbleEls.length; i++) {
@@ -369,7 +441,7 @@ function AChart(wrapperId, data) {
   this.viewSvg.appendChild(this.viewLineGroup);
   this.viewPaths = [];
   for (i = 0; i < this.series.length; i++) {
-    this.viewPaths.push(createPath(this.viewLineGroup, this.xs, this.series[i], 2.2));
+    this.viewPaths.push(createPath(this.viewLineGroup, this.xs, this.series, i, 2.2));
   }
 
   this.topOverlayEl = createEl(this.viewEl, 'top-overlay');
@@ -387,7 +459,7 @@ function AChart(wrapperId, data) {
   this.overviewSvg = createEl(this.overviewEl, 'overview-svg', 'svg');
   this.overviewPaths = [];
   for (i = 0; i < this.series.length; i++) {
-    this.overviewPaths.push(createPath(this.overviewSvg, this.xs, this.series[i], 1.2));
+    this.overviewPaths.push(createPath(this.overviewSvg, this.xs, this.series, i, 1.2));
   }
 
   this.overviewWindowEl = createEl(this.overviewEl, 'overview-window');
@@ -442,34 +514,6 @@ function AChart(wrapperId, data) {
     this.selectionIndex = null;
     this.updateView();
   }.bind(this), false);
-  this.overviewEl.addEventListener('wheel', function(e) {
-    if (!e.ctrlKey) {
-      // To allow scrolling
-      return;
-    }
-    
-    var pos = 0.5, mid = (this.minX + this.maxX) / 2,
-        x = this.gminX + (e.pageX - this.overviewEl.getBoundingClientRect().left - window.pageXOffset) / this.gscaleX,
-        sz = this.maxX - this.minX;
-    if (x >= this.minX && x <= this.maxX) {
-      pos = (x - this.gminX) / (this.gmaxX - this.gminX);
-      mid = x;
-    }
-    sz = Math.max(sz - e.deltaY / this.gscaleX, this.MIN_WINDOW_SIZE / this.gscaleX);
-    if (mid - sz * (1 - pos) <= this.gminX) {
-      this.minX = this.gminX;
-      this.maxX = Math.min(this.minX + sz, this.gmaxX);
-    } else
-    if (mid + sz * pos >= this.gmaxX) {
-      this.maxX = this.gmaxX;
-      this.minX = Math.max(this.maxX - sz, this.gminX);
-    } else {
-      this.minX = mid - sz * (1 - pos);
-      this.maxX = mid + sz * pos;
-    }
-    e.preventDefault();
-    this.updateView();
-  }.bind(this), false);
 
   this.legendEl = createEl(this.wrapperEl, 'legend');
   this.legendLabelEls = [];
@@ -520,7 +564,7 @@ AChart.prototype.updateView = function() {
       for (j = 0; j < this.xs.length; j++) {
         noData = false;
         if (this.minX <= this.xs[j] && this.xs[j] <= this.maxX) {
-          maxY = Math.max(maxY, series.ptsLabels[j]);
+          maxY = Math.max(maxY, series.pts[j]);
           // if (series.doubleY && i === 1) {
           //   maxYRight = Math.max(maxYRight, series.ptsLabels[j]);
           // }
@@ -528,7 +572,7 @@ AChart.prototype.updateView = function() {
             firstX = this.xs[j];
           }
         }
-        gmaxY = Math.max(gmaxY, series.ptsLabels[j]);
+        gmaxY = Math.max(gmaxY, series.pts[j]);
       }
     }
   }
@@ -555,7 +599,7 @@ AChart.prototype.updateView = function() {
   }
 
   addRight = {0: true};
-  if (!noData) {
+  if (!noData && this.series[0].doubleY) {
     for (i = 1; i <= 5; i++) {
       addRight[getNormalizedValue(
         this.series[1].minY,
@@ -586,16 +630,16 @@ AChart.prototype.updateView = function() {
 
   Object.keys(add).forEach((y, index) => {
     const yRight = Object.keys(addRight)[index];
-
+    const [firstSeries, secondSeries] = this.series;
     line = {
       y: y,
       yRight: yRight,
       lineEl: createEl(this.gridContainerEl, 'y-line'),
       labelEl: createEl(this.gridContainerEl, 'y-label'),
     };
-    line.labelEl.innerHTML = this.series[0].doubleY 
-      ? `<div style="color:${this.series[0].color}">${this.series[0].isActive ? formatNumber(y, true) : ''}</div>` + `<div style="color:${this.series[1].color}">${this.series[1].isActive ? formatNumber(yRight, true) : ''}</div>`
-      : formatNumber(y, true);
+    line.labelEl.innerHTML = firstSeries.doubleY 
+      ? `<div style="color:${firstSeries.color}">${firstSeries.isActive ? formatNumber(y, true) : ''}</div>` + `<div style="color:${secondSeries.color}">${secondSeries.isActive ? formatNumber(yRight, true) : ''}</div>`
+      : formatNumber(y * (firstSeries.isBar && !firstSeries.isStacked ? 10 : 1), true);
 
     if (this.scaleY !== undefined) {
       line.lineEl.style.bottom = line.y * oldScaleY + 'px';
@@ -685,7 +729,7 @@ AChart.prototype.updateView = function() {
     }
     this.selectionBoxEl.style.display = 'none';
   } else {
-    left = (this.xs[this.selectionIndex] - this.minX) * scaleX + this.SIDE_PADDING;
+    left = ((this.series[0].isBar ? (this.xs[this.selectionIndex + 1] + this.xs[this.selectionIndex]) / 2 : this.xs[this.selectionIndex]) - this.minX) * scaleX + this.SIDE_PADDING;
     percent = (this.xs[this.selectionIndex] - this.minX) / (this.maxX - this.minX);
     highest = 0;
     this.selectionLineEl.style.display = 'block';
@@ -693,7 +737,7 @@ AChart.prototype.updateView = function() {
     for (i = 0; i < this.selectionBubbleEls.length; i++) {
       y = this.series[i].pts[this.selectionIndex] * scaleY;
       this.selectionBubbleEls[i].style.display = 'block';
-      this.selectionBubbleEls[i].style.opacity = this.series[i].isActive ? 1 : 0;
+      this.selectionBubbleEls[i].style.opacity = this.series[i].isActive && !this.series[i].isBar ? 1 : 0;
       this.selectionBubbleEls[i].style.borderColor = this.series[i].color;
       this.selectionBubbleEls[i].style.left = left + 'px';
       this.selectionBubbleEls[i].style.bottom = y + 'px';
@@ -720,6 +764,15 @@ AChart.prototype.updateView = function() {
         Math.min(W - this.selectionBoxEl.offsetWidth + this.SIDE_PADDING * 3 / 2,
           left - (this.selectionBoxEl.offsetWidth - this.SIDE_PADDING) * percent - this.SIDE_PADDING / 2)) + 'px';
     this.selectionBoxEl.style.top = highest + 'px';
+  
+    // if (this.series[0].isBar) {
+    //   const viewLineGroupChildren = Array.from(this.viewLineGroup.children);
+
+    //   viewLineGroupChildren.forEach((group, groupIndex) => {
+    //     group.style.fill = hex2rgba(this.series[groupIndex].color, 0.5);
+    //     group.children[this.selectionIndex].style.fill = this.series[groupIndex].color;
+    //   });
+    // }
   }
 
   // Update overview paths
@@ -745,4 +798,8 @@ AChart.prototype.updateView = function() {
   this.scaleY = scaleY;
   this.gscaleX = gscaleX;
   this.gscaleY = gscaleY;
+}
+
+for (var i = 0; i < 5; i++) {
+  new AChart('chart-' + i, chartData[i]);
 }
